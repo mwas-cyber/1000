@@ -1,0 +1,833 @@
+"use client";
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { 
+  Home, 
+  User, 
+  Users, 
+  FileText, 
+  DollarSign, 
+  CheckCircle, 
+  Clock, 
+  XCircle,
+  Plus,
+  Search,
+  Bell,
+  Settings
+} from "lucide-react";
+
+// Types
+type UserRole = "student" | "writer" | "admin";
+type AssignmentStatus = "posted" | "in-progress" | "completed" | "pending-approval";
+type BidStatus = "pending" | "accepted" | "rejected";
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  verified: boolean;
+}
+
+interface Assignment {
+  id: string;
+  title: string;
+  description: string;
+  subject: string;
+  deadline: string;
+  budget: number;
+  status: AssignmentStatus;
+  studentId: string;
+  writerId?: string;
+  bids: Bid[];
+}
+
+interface Bid {
+  id: string;
+  writerId: string;
+  amount: number;
+  message: string;
+  status: BidStatus;
+  createdAt: string;
+}
+
+// Mock data
+const mockUsers: User[] = [
+  { id: "1", name: "Alex Johnson", email: "alex@student.edu", role: "student", verified: true },
+  { id: "2", name: "Sarah Williams", email: "sarah@writer.com", role: "writer", verified: true },
+  { id: "3", name: "Admin User", email: "admin@studylink.com", role: "admin", verified: true },
+];
+
+const mockAssignments: Assignment[] = [
+  {
+    id: "1",
+    title: "Research Paper on Climate Change",
+    description: "1500-word research paper with at least 5 academic sources",
+    subject: "Environmental Science",
+    deadline: "2023-12-15",
+    budget: 85,
+    status: "posted",
+    studentId: "1",
+    bids: [
+      { id: "1", writerId: "2", amount: 75, message: "I have expertise in environmental topics", status: "pending", createdAt: "2023-12-01" }
+    ]
+  },
+  {
+    id: "2",
+    title: "Calculus Exam Preparation",
+    description: "Help with derivatives and integrals for upcoming exam",
+    subject: "Mathematics",
+    deadline: "2023-12-10",
+    budget: 50,
+    status: "in-progress",
+    studentId: "1",
+    writerId: "2",
+    bids: [
+      { id: "2", writerId: "2", amount: 45, message: "I can help you prepare effectively", status: "accepted", createdAt: "2023-11-28" }
+    ]
+  }
+];
+
+export default function StudyLinkDashboard() {
+  const [currentUser, setCurrentUser] = useState<User | null>(mockUsers[0]);
+  const [assignments, setAssignments] = useState<Assignment[]>(mockAssignments);
+  const [activeTab, setActiveTab] = useState<"dashboard" | "assignments" | "profile">("dashboard");
+  const [newAssignment, setNewAssignment] = useState({
+    title: "",
+    description: "",
+    subject: "",
+    deadline: "",
+    budget: 50
+  });
+  const [searchTerm, setSearchTerm] = useState("");
+
+  // Filter assignments based on user role
+  const getFilteredAssignments = () => {
+    if (!currentUser) return [];
+    
+    if (currentUser.role === "student") {
+      return assignments.filter(a => a.studentId === currentUser.id);
+    }
+    
+    if (currentUser.role === "writer") {
+      return assignments.filter(a => a.status === "posted");
+    }
+    
+    return assignments; // Admin sees all
+  };
+
+  const filteredAssignments = getFilteredAssignments().filter(a => 
+    a.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    a.subject.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handlePostAssignment = () => {
+    if (!currentUser || currentUser.role !== "student") return;
+    
+    const newAssignmentObj: Assignment = {
+      id: (assignments.length + 1).toString(),
+      ...newAssignment,
+      status: "posted",
+      studentId: currentUser.id,
+      bids: []
+    };
+    
+    setAssignments([...assignments, newAssignmentObj]);
+    setNewAssignment({
+      title: "",
+      description: "",
+      subject: "",
+      deadline: "",
+      budget: 50
+    });
+  };
+
+  const handleBidOnAssignment = (assignmentId: string, amount: number, message: string) => {
+    if (!currentUser || currentUser.role !== "writer") return;
+    
+    setAssignments(assignments.map(assignment => {
+      if (assignment.id === assignmentId) {
+        const newBid: Bid = {
+          id: (assignment.bids.length + 1).toString(),
+          writerId: currentUser.id,
+          amount,
+          message,
+          status: "pending",
+          createdAt: new Date().toISOString()
+        };
+        return {
+          ...assignment,
+          bids: [...assignment.bids, newBid]
+        };
+      }
+      return assignment;
+    }));
+  };
+
+  const handleAcceptBid = (assignmentId: string, bidId: string) => {
+    if (!currentUser || currentUser.role !== "student") return;
+    
+    setAssignments(assignments.map(assignment => {
+      if (assignment.id === assignmentId && assignment.studentId === currentUser.id) {
+        const updatedBids = assignment.bids.map(bid => 
+          bid.id === bidId 
+            ? { ...bid, status: "accepted" } 
+            : bid.status === "accepted" 
+              ? { ...bid, status: "rejected" } 
+              : bid
+        );
+        
+        return {
+          ...assignment,
+          status: "in-progress",
+          writerId: assignment.bids.find(b => b.id === bidId)?.writerId,
+          bids: updatedBids
+        };
+      }
+      return assignment;
+    }));
+  };
+
+  const getStatusColor = (status: AssignmentStatus | BidStatus) => {
+    switch (status) {
+      case "posted": return "bg-blue-100 text-blue-800";
+      case "in-progress": return "bg-yellow-100 text-yellow-800";
+      case "completed": return "bg-green-100 text-green-800";
+      case "pending-approval": return "bg-purple-100 text-purple-800";
+      case "accepted": return "bg-green-100 text-green-800";
+      case "pending": return "bg-gray-100 text-gray-800";
+      case "rejected": return "bg-red-100 text-red-800";
+      default: return "bg-gray-100 text-gray-800";
+    }
+  };
+
+  const renderDashboardContent = () => {
+    if (!currentUser) return null;
+
+    switch (currentUser.role) {
+      case "student":
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Assignments</CardTitle>
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {assignments.filter(a => a.studentId === currentUser.id).length}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Posted and in progress</p>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Active Assignments</CardTitle>
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {assignments.filter(a => a.studentId === currentUser.id && a.status === "in-progress").length}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Currently being worked on</p>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Spent</CardTitle>
+                  <DollarSign className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    ${assignments
+                      .filter(a => a.studentId === currentUser.id && a.status === "completed")
+                      .reduce((sum, a) => sum + a.budget, 0)}
+                  </div>
+                  <p className="text-xs text-muted-foreground">On completed assignments</p>
+                </CardContent>
+              </Card>
+            </div>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle>Post New Assignment</CardTitle>
+                <CardDescription>Get help from verified writers</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="title">Assignment Title</Label>
+                  <Input 
+                    id="title" 
+                    value={newAssignment.title}
+                    onChange={(e) => setNewAssignment({...newAssignment, title: e.target.value})}
+                    placeholder="e.g., Research Paper on Climate Change"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea 
+                    id="description"
+                    value={newAssignment.description}
+                    onChange={(e) => setNewAssignment({...newAssignment, description: e.target.value})}
+                    placeholder="Describe your assignment in detail..."
+                  />
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="subject">Subject</Label>
+                    <Input 
+                      id="subject"
+                      value={newAssignment.subject}
+                      onChange={(e) => setNewAssignment({...newAssignment, subject: e.target.value})}
+                      placeholder="e.g., Environmental Science"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="deadline">Deadline</Label>
+                    <Input 
+                      id="deadline"
+                      type="date"
+                      value={newAssignment.deadline}
+                      onChange={(e) => setNewAssignment({...newAssignment, deadline: e.target.value})}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="budget">Budget ($)</Label>
+                    <Input 
+                      id="budget"
+                      type="number"
+                      min="10"
+                      value={newAssignment.budget}
+                      onChange={(e) => setNewAssignment({...newAssignment, budget: Number(e.target.value)})}
+                    />
+                  </div>
+                </div>
+                
+                <Button onClick={handlePostAssignment} className="w-full">
+                  <Plus className="mr-2 h-4 w-4" /> Post Assignment
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        );
+        
+      case "writer":
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Available Assignments</CardTitle>
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {assignments.filter(a => a.status === "posted").length}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Open for bidding</p>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Active Projects</CardTitle>
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {assignments.filter(a => a.writerId === currentUser.id && a.status === "in-progress").length}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Currently working on</p>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Earnings</CardTitle>
+                  <DollarSign className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    ${assignments
+                      .filter(a => a.writerId === currentUser.id && a.status === "completed")
+                      .reduce((sum, a) => sum + a.budget, 0)}
+                  </div>
+                  <p className="text-xs text-muted-foreground">From completed assignments</p>
+                </CardContent>
+              </Card>
+            </div>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle>Available Assignments</CardTitle>
+                <CardDescription>Bid on assignments that match your expertise</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {assignments.filter(a => a.status === "posted").map(assignment => (
+                    <Card key={assignment.id}>
+                      <CardHeader>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <CardTitle>{assignment.title}</CardTitle>
+                            <CardDescription>{assignment.subject}</CardDescription>
+                          </div>
+                          <span className={`px-2 py-1 rounded-full text-xs ${getStatusColor(assignment.status)}`}>
+                            {assignment.status}
+                          </span>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-sm text-muted-foreground mb-4">{assignment.description}</p>
+                        
+                        <div className="flex flex-wrap gap-4 mb-4">
+                          <div className="flex items-center">
+                            <Clock className="h-4 w-4 mr-1 text-muted-foreground" />
+                            <span className="text-sm">Due: {assignment.deadline}</span>
+                          </div>
+                          <div className="flex items-center">
+                            <DollarSign className="h-4 w-4 mr-1 text-muted-foreground" />
+                            <span className="text-sm">Budget: ${assignment.budget}</span>
+                          </div>
+                        </div>
+                        
+                        <div className="flex gap-2">
+                          <Input 
+                            type="number" 
+                            placeholder="Your bid amount" 
+                            className="max-w-[150px]"
+                            min="10"
+                          />
+                          <Input 
+                            placeholder="Message to student" 
+                            className="flex-1"
+                          />
+                          <Button>Bid</Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+        
+      case "admin":
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Users</CardTitle>
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{mockUsers.length}</div>
+                  <p className="text-xs text-muted-foreground">Students and writers</p>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {mockUsers.filter(u => !u.verified).length}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Accounts awaiting verification</p>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Active Assignments</CardTitle>
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {assignments.filter(a => a.status !== "completed").length}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Posted and in progress</p>
+                </CardContent>
+              </Card>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>User Management</CardTitle>
+                  <CardDescription>Verify and manage user accounts</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {mockUsers.filter(u => !u.verified).map(user => (
+                      <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="flex items-center space-x-4">
+                          <Avatar>
+                            <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium">{user.name}</p>
+                            <p className="text-sm text-muted-foreground">{user.email}</p>
+                          </div>
+                        </div>
+                        <div className="flex space-x-2">
+                          <Button size="sm" variant="outline">
+                            <XCircle className="h-4 w-4 mr-1" /> Reject
+                          </Button>
+                          <Button size="sm">
+                            <CheckCircle className="h-4 w-4 mr-1" /> Approve
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle>Assignment Oversight</CardTitle>
+                  <CardDescription>Monitor and manage assignments</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {assignments.filter(a => a.status === "pending-approval").map(assignment => (
+                      <div key={assignment.id} className="p-4 border rounded-lg">
+                        <div className="flex justify-between">
+                          <h3 className="font-medium">{assignment.title}</h3>
+                          <span className={`px-2 py-1 rounded-full text-xs ${getStatusColor(assignment.status)}`}>
+                            {assignment.status}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1">{assignment.subject}</p>
+                        <div className="flex justify-between mt-3">
+                          <span className="text-sm">Budget: ${assignment.budget}</span>
+                          <Button size="sm" variant="outline">Review</Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        );
+    }
+  };
+
+  const renderAssignments = () => {
+    if (!currentUser) return null;
+
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            {currentUser.role === "student" 
+              ? "My Assignments" 
+              : currentUser.role === "writer" 
+                ? "My Bids" 
+                : "All Assignments"}
+          </CardTitle>
+          <CardDescription>
+            {currentUser.role === "student" 
+              ? "Track your posted assignments" 
+              : currentUser.role === "writer" 
+                ? "View assignments you've bid on" 
+                : "Manage all assignments on the platform"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-4">
+            <div className="relative">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search assignments..."
+                className="pl-8"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+          
+          <div className="space-y-4">
+            {filteredAssignments.length === 0 ? (
+              <div className="text-center py-8">
+                <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
+                <h3 className="mt-4 font-medium">No assignments found</h3>
+                <p className="text-sm text-muted-foreground">
+                  {currentUser.role === "student" 
+                    ? "Post your first assignment to get started" 
+                    : "Check back later for new assignments"}
+                </p>
+              </div>
+            ) : (
+              filteredAssignments.map(assignment => (
+                <Card key={assignment.id}>
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle>{assignment.title}</CardTitle>
+                        <CardDescription>{assignment.subject}</CardDescription>
+                      </div>
+                      <span className={`px-2 py-1 rounded-full text-xs ${getStatusColor(assignment.status)}`}>
+                        {assignment.status}
+                      </span>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground mb-4">{assignment.description}</p>
+                    
+                    <div className="flex flex-wrap gap-4 mb-4">
+                      <div className="flex items-center">
+                        <Clock className="h-4 w-4 mr-1 text-muted-foreground" />
+                        <span className="text-sm">Due: {assignment.deadline}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <DollarSign className="h-4 w-4 mr-1 text-muted-foreground" />
+                        <span className="text-sm">Budget: ${assignment.budget}</span>
+                      </div>
+                    </div>
+                    
+                    {currentUser.role === "student" && assignment.status === "posted" && (
+                      <div>
+                        <h4 className="font-medium mb-2">Bids ({assignment.bids.length})</h4>
+                        <div className="space-y-3">
+                          {assignment.bids.map(bid => (
+                            <div key={bid.id} className="flex items-center justify-between p-3 border rounded-lg">
+                              <div>
+                                <p className="font-medium">Writer #{bid.writerId}</p>
+                                <p className="text-sm text-muted-foreground">${bid.amount} - {bid.message}</p>
+                              </div>
+                              {bid.status === "pending" && (
+                                <Button 
+                                  size="sm" 
+                                  onClick={() => handleAcceptBid(assignment.id, bid.id)}
+                                >
+                                  Accept Bid
+                                </Button>
+                              )}
+                              <span className={`px-2 py-1 rounded-full text-xs ${getStatusColor(bid.status)}`}>
+                                {bid.status}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {currentUser.role === "writer" && (
+                      <div>
+                        <h4 className="font-medium mb-2">Your Bid Status</h4>
+                        {assignment.bids.some(b => b.writerId === currentUser.id) ? (
+                          <div className="flex items-center justify-between">
+                            <span className={`px-2 py-1 rounded-full text-xs ${getStatusColor(
+                              assignment.bids.find(b => b.writerId === currentUser.id)?.status || "pending"
+                            )}`}>
+                              {assignment.bids.find(b => b.writerId === currentUser.id)?.status || "pending"}
+                            </span>
+                            <Button variant="outline" size="sm">View Details</Button>
+                          </div>
+                        ) : (
+                          <Button variant="outline" className="w-full">
+                            <Plus className="mr-2 h-4 w-4" /> Place Bid
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderProfile = () => {
+    if (!currentUser) return null;
+
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Profile Settings</CardTitle>
+          <CardDescription>Manage your account information</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center space-x-4">
+            <Avatar className="h-16 w-16">
+              <AvatarImage src={`https://api.dicebear.com/6.x/initials/svg?seed=${currentUser.name}`} />
+              <AvatarFallback>{currentUser.name.charAt(0)}</AvatarFallback>
+            </Avatar>
+            <div>
+              <h3 className="text-lg font-medium">{currentUser.name}</h3>
+              <p className="text-sm text-muted-foreground">{currentUser.email}</p>
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-1 ${currentUser.verified ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                {currentUser.verified ? 'Verified' : 'Pending Verification'}
+              </span>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Full Name</Label>
+              <Input id="name" defaultValue={currentUser.name} />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" type="email" defaultValue={currentUser.email} />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="role">Role</Label>
+              <Input id="role" defaultValue={currentUser.role} disabled />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input id="password" type="password" placeholder="••••••••" />
+            </div>
+          </div>
+          
+          <div className="flex justify-end">
+            <Button>Save Changes</Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="border-b bg-white">
+        <div className="container flex h-16 items-center justify-between px-4">
+          <div className="flex items-center space-x-2">
+            <div className="bg-blue-600 text-white p-2 rounded-lg">
+              <FileText className="h-6 w-6" />
+            </div>
+            <span className="text-xl font-bold">StudyLink</span>
+          </div>
+          
+          <div className="flex items-center space-x-4">
+            <div className="relative">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search..."
+                className="pl-8 w-64"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            
+            <Button variant="ghost" size="icon">
+              <Bell className="h-5 w-5" />
+            </Button>
+            
+            <Button variant="ghost" size="icon">
+              <Settings className="h-5 w-5" />
+            </Button>
+            
+            <Avatar>
+              <AvatarImage src={`https://api.dicebear.com/6.x/initials/svg?seed=${currentUser?.name}`} />
+              <AvatarFallback>{currentUser?.name.charAt(0)}</AvatarFallback>
+            </Avatar>
+          </div>
+        </div>
+      </header>
+      
+      <div className="container flex">
+        {/* Sidebar */}
+        <aside className="w-64 border-r bg-white min-h-[calc(100vh-4rem)] p-4">
+          <nav className="space-y-1">
+            <Button 
+              variant={activeTab === "dashboard" ? "secondary" : "ghost"} 
+              className="w-full justify-start"
+              onClick={() => setActiveTab("dashboard")}
+            >
+              <Home className="mr-2 h-4 w-4" />
+              Dashboard
+            </Button>
+            
+            <Button 
+              variant={activeTab === "assignments" ? "secondary" : "ghost"} 
+              className="w-full justify-start"
+              onClick={() => setActiveTab("assignments")}
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              Assignments
+            </Button>
+            
+            <Button 
+              variant={activeTab === "profile" ? "secondary" : "ghost"} 
+              className="w-full justify-start"
+              onClick={() => setActiveTab("profile")}
+            >
+              <User className="mr-2 h-4 w-4" />
+              Profile
+            </Button>
+          </nav>
+          
+          <div className="mt-8">
+            <h3 className="px-3 text-sm font-semibold text-muted-foreground">User Switcher</h3>
+            <div className="mt-2 space-y-1">
+              {mockUsers.map(user => (
+                <Button
+                  key={user.id}
+                  variant={currentUser?.id === user.id ? "secondary" : "ghost"}
+                  className="w-full justify-start"
+                  onClick={() => setCurrentUser(user)}
+                >
+                  <Avatar className="mr-2 h-5 w-5">
+                    <AvatarImage src={`https://api.dicebear.com/6.x/initials/svg?seed=${user.name}`} />
+                    <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  {user.name}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </aside>
+        
+        {/* Main Content */}
+        <main className="flex-1 p-6">
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold capitalize">
+              {currentUser?.role} Dashboard
+            </h1>
+            <p className="text-muted-foreground">
+              {currentUser?.role === "student" 
+                ? "Post assignments and track progress" 
+                : currentUser?.role === "writer" 
+                  ? "Browse assignments and submit bids" 
+                  : "Manage users and assignments"}
+            </p>
+          </div>
+          
+          {activeTab === "dashboard" && renderDashboardContent()}
+          {activeTab === "assignments" && renderAssignments()}
+          {activeTab === "profile" && renderProfile()}
+        </main>
+      </div>
+    </div>
+  );
+}
